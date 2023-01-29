@@ -14,6 +14,8 @@ const uint16_t RESOURCES[RESOURCES_COUNT] = {
     LED_1_Pin, LED_2_Pin, LED_3_Pin
 };
 
+osThreadId_t resourceThreads[3];
+
 osSemaphoreId_t  semTaskEvent_id; 
 osSemaphoreId_t  semFreeResources_id; 
 osEventFlagsId_t evt_id;
@@ -22,7 +24,7 @@ void AppMain()
 {
      /* Init scheduler */
     osKernelInitialize();
-    
+
     evt_id = osEventFlagsNew(NULL);
     if (evt_id == NULL) 
         signalForError(E_GENERIC);
@@ -36,7 +38,7 @@ void AppMain()
     // resources to mitigate a problem with ISR being able
     // to "buffer" a single additional resource task before 
     // it starts ignoring consequent resource utilization requests.
-    semFreeResources_id = osSemaphoreNew(3U, 3U, NULL);
+    semFreeResources_id = osSemaphoreNew(RESOURCES_COUNT, RESOURCES_COUNT, NULL);
 
     if(semTaskEvent_id == NULL || semFreeResources_id == NULL)
         signalForError(E_GENERIC);
@@ -48,7 +50,7 @@ void AppMain()
 
     // Start all the threads 
     for(uint8_t i = 0; i < RESOURCES_COUNT; ++i) {
-        osThreadNew(resourceTask, (void*)&RESOURCES[i], &ledTaskAttrs);
+        resourceThreads[i] = osThreadNew(resourceTask, (void*)&RESOURCES[i], &ledTaskAttrs);
     }
 
     osThreadAttr_t alarmTaskAttrs = {};
@@ -57,6 +59,9 @@ void AppMain()
     alarmTaskAttrs.priority   = osPriorityHigh;
     osThreadNew(alarmTask, NULL, &alarmTaskAttrs);
 
+    // Init temperature controller
+    TempControllerMain();
+    
     /* Start scheduler */
     osKernelStart();
 }
@@ -138,10 +143,14 @@ void alarmTask(void* argument) {
         msg = const_cast<char*>(Error::getErrorMessage(errorFlag));
 
         // Write error message
-        HAL_UART_Transmit(&huart1, reinterpret_cast<uint8_t*>(msg), std::strlen(msg), 500);
+        if(HAL_UART_Transmit(&huart1, reinterpret_cast<uint8_t*>(msg), static_cast<uint16_t>(std::strlen(msg)), 500) != HAL_OK) {
+            signalForError(E_WRITE_FAILED);
+        }
         
         // Write newline
-        HAL_UART_Transmit(&huart1, dataBuffer, sizeof(dataBuffer), 500);
+        if(HAL_UART_Transmit(&huart1, dataBuffer, sizeof(dataBuffer), 500) != HAL_OK) {
+            signalForError(E_WRITE_FAILED);
+        }
 
         if(errorFlag == uint32_t(E_NO_MORE_RESOURCES)) 
             blinkAlarmLED(3, 250);

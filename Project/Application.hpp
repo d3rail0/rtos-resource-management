@@ -16,6 +16,10 @@ extern "C"
 {
 #endif
     void AppMain();
+    extern void TempControllerMain();
+
+    void signalForError(Error error);
 #ifdef __cplusplus
 }
 #endif
+

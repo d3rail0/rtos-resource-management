@@ -1,0 +1,115 @@
+#include "TemperatureControl.hpp"
+
+// Max elements that can be buffered in the message queue
+const uint8_t MQ_BUFFER_SIZE = 8;
+const float MAX_VOLTAGE      = 5.0f;
+const float ADC_RESOLUTION   = 4096.f; 
+
+osMessageQueueId_t msgQueue_id;
+osThreadAttr_t tempTaskAttrs  = {};
+bool isResourceTasksSuspended = false;
+
+void tempReaderTask(void*);
+void tempProcessorTask(void*);
+
+void TempControllerMain() {
+
+    msgQueue_id = osMessageQueueNew(MQ_BUFFER_SIZE, sizeof(float), NULL);
+    if (msgQueue_id == NULL) {
+        signalForError(E_TEMP_CTRL_FAILED_START);
+        return;
+    }
+    
+    tempTaskAttrs.name       = "TEMP_TASK";
+    tempTaskAttrs.stack_size = 128 * 4;
+    tempTaskAttrs.priority   = osPriorityHigh;
+
+    // Start producer and consumer threads
+    osThreadNew(tempReaderTask, NULL, &tempTaskAttrs);
+    osThreadNew(tempProcessorTask, NULL, &tempTaskAttrs);
+
+}
+
+void stopAllResourceTasks() {
+    for(size_t i = sizeof(resourceThreads)/sizeof(osThreadId_t); i > 0; --i)
+        osThreadSuspend(resourceThreads[i-1]);
+
+    isResourceTasksSuspended = true;
+}
+
+void resumeAllResourcesTasks() {
+for(size_t i = sizeof(resourceThreads)/sizeof(osThreadId_t); i > 0; --i)
+        osThreadResume(resourceThreads[i-1]);
+
+    isResourceTasksSuspended = false;
+}
+
+void tempReaderTask(void*) {
+
+    uint32_t bufferedReading[MQ_BUFFER_SIZE];
+    uint16_t currElement = 0;
+    uint32_t adcReading = 0;
+
+    for(;;) {
+        HAL_ADC_Start(&hadc1);
+
+        if (HAL_ADC_PollForConversion(&hadc1, 250) == HAL_OK) {
+            adcReading = HAL_ADC_GetValue(&hadc1);
+            bufferedReading[currElement] = adcReading;
+        } else {
+            signalForError(E_TEMP_NOT_READ_ON_TIME);
+        }
+        
+        HAL_ADC_Stop(&hadc1);
+
+        // Push the reading to a queue
+        if(osMessageQueuePut(msgQueue_id, &bufferedReading[currElement], 0U, 0U) != osOK) {
+            signalForError(E_TEMP_MQ_FULL);
+        }
+
+        currElement = (currElement+1) % MQ_BUFFER_SIZE;
+
+        osDelay(250);
+    }
+
+}
+
+void tempProcessorTask(void*) {
+    char     readingMessage[32];
+    float    temp;
+    uint32_t adcReading;
+
+    // Since compiling this program with printf() floating-point support
+    // would end up increasing the FLASH memory size and overflowing, 
+    // printing float will require a different approach
+    char    tempSign[2] = " "; // can be ' ' or '-'
+    int32_t tempInt     = 0;
+    int32_t fractInt    = 0;
+    float   tempFrac    = 0.f;
+    float   tmpTemp     = 0.f;
+
+    for(;;) {
+        if(osMessageQueueGet(msgQueue_id, &adcReading, NULL, 250U)) {
+            signalForError(E_TEMP_NOT_READ_ON_TIME);
+            osDelay(250);
+            continue;
+        }
+
+        temp = MAX_VOLTAGE * adcReading * 100 / ADC_RESOLUTION;
+
+        // Decompose float value
+        tempSign[0] = (temp < 0) ? '-' : ' ';        // Resolve sign
+        tmpTemp     = (temp < 0) ? -temp : temp;     // Make tmpTemp positive
+        tempInt     = static_cast<int32_t>(tmpTemp); // Extract integer part from float
+        tempFrac    = tmpTemp - tempInt;             // Extract fractional part from float
+        fractInt    = static_cast<int32_t>(trunc(tempFrac*10000)); // Turn fractional part into an integer (with 4-digit precision)
+
+        sprintf(readingMessage, "Temperature: %s%ld.%04ld *C\r\n", tempSign, tempInt, fractInt);
+        if(HAL_UART_Transmit(&huart1, reinterpret_cast<uint8_t*>(readingMessage), static_cast<uint16_t>(std::strlen(readingMessage)), 50U) != HAL_OK) {
+            signalForError(E_WRITE_FAILED);
+        }
+
+        osDelay(250);
+    }
+
+}

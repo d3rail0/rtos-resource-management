@@ -193,7 +193,9 @@ static void MX_ADC1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
-
+  /* ADC1_2_IRQn interrupt configuration */
+  // HAL_NVIC_SetPriority(ADC1_2_IRQn, 5, 0);
+  // HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
   /* USER CODE END ADC1_Init 2 */
 
 }
