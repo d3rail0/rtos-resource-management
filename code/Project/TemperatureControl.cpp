@@ -13,8 +13,8 @@ osMessageQueueId_t msgQueue_id;
 osThreadAttr_t tempTaskAttrs  = {};
 bool isResourceTasksSuspended = false;
 
-void tempReaderTask(void*);
-void tempProcessorTask(void*);
+__NO_RETURN void tempReaderTask(void*);
+__NO_RETURN void tempProcessorTask(void*);
 
 void TempControllerMain() {
 
