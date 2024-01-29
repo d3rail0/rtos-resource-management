@@ -13,12 +13,12 @@ Three threads were created to manage the 3 LEDs. An Interrupt Service Routine (I
 
 Finally, a high-priority producer-consumer pattern was implemented for processing temperature readings and converting them into temperature values. If the temperature fell outside a specified range, the consumer task would suspend all resource threads to prevent damage to the MCU.
 
-This was as a fun learning opportunity for several reasons:
+This was a fun learning opportunity for several reasons:
 1. **Utilizing RTOS**
-2. **Managing resources** - The use of binary and counting semaphores for resource management.
-3. **Implementing Interrupt Service Routines (ISRs)** - This project involved interrupt handling, i.e. implementing an ISR triggered by a pushbutton.
-4. **Implementing threads** - Multithreading used for management of three LEDs.
-5. **High-priority task management** - The implementation of the producer-consumer pattern for task prioritization.
+2. **Managing resources** - the use of binary and counting semaphores for resource management.
+3. **Implementing Interrupt Service Routines (ISRs)** - this project involved interrupt handling, i.e. implementing an ISR triggered by a pushbutton.
+4. **Implementing threads** - multithreading used for management of three LEDs.
+5. **High-priority task management** - implemented a high-priority producer-consumer pattern to process temperature data, suspending LED threads if temperatures deviated from set ranges.
 
 Pinout configuration used for the project:
 ![](./code/PinoutConfiguration.png)
